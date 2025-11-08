@@ -23,17 +23,8 @@ import os
 import json
 
 # Choose loaders and embeddings from langchain-community
-try:
-    from langchain_community.document_loaders import PyPDFium2Loader
-except Exception:
-    PyPDFium2Loader = None
-
-try:
-    import fitz  # pymupdf
-    from langchain_community.document_loaders import PyMuPDFLoader
-except Exception:
-    PyMuPDFLoader = None
-
+from langchain_community.document_loaders import PyPDFium2Loader
+from langchain_community.document_loaders import PyMuPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
