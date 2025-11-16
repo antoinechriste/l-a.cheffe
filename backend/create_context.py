@@ -8,6 +8,7 @@ from langchain_community.llms import HuggingFaceHub
 from pathlib import Path
 import gradio as gr
 import shutil
+import uuid
 
 # Task 1 - Load URLs from url_list.txt
 path_url = "C:\\Users\\chris\\OneDrive\\Documenti\\AI-projects\\cookbot\\documents\\"
@@ -63,19 +64,18 @@ embeddings = HuggingFaceEmbeddings(
 
 # Task 4 - Create and configure vector databases to store embeddings
 # Create a Chroma vector store from the document chunks
-shutil.rmtree("./chroma_db", ignore_errors=True)
-
 vectordb = Chroma.from_documents(
-    documents=split_text,  # Use split_text (Document objects) instead of texts (strings)
+    documents=split_text,
     embedding=embeddings,
-    persist_directory="./chroma_db"  # Optionally persist to disk
+    persist_directory="./chroma_db",
+    collection_name=f"collection_{uuid.uuid4()}"
 )
 
 print(f"Created vector store with {vectordb._collection.count()} documents")
 
 # Task 5 - Task 5: Develop a retriever to fetch document segments based on queries (10 points)
 query = "Quelle est la meilleure recette de smashed burger?"
-results = vectordb.similarity_search(query, k=3)
+results = vectordb.similarity_search(query, k=1)
 
 for i, doc in enumerate(results, start=1):
     print(f"\nResult {i}:")
@@ -86,8 +86,16 @@ for i, doc in enumerate(results, start=1):
 
 # Test it with Gradio interface
 def query_chroma(user_query):
-    results = vectordb.similarity_search(user_query, k=3)
-    return "\n".join([f"Source: {doc.metadata.get('source', 'Inconnue')}" for doc in results])
+    results = vectordb.similarity_search(user_query, k=1)
+    output = []
+    for doc in results:
+        source = doc.metadata.get('source', 'Inconnue')
+        link = f'{source}</a>'
+        output.append(f"Proposition : {link}")
+    return "<br>".join(output)
 
-gr.Interface(fn=query_chroma, inputs="text", outputs="text", title="L-A.cheffe").launch()
+gr.Interface(fn=query_chroma,
+             inputs=gr.Textbox(lines=5, placeholder="Tapez votre requête ici..."),
+             outputs="html", 
+             title="L-A.cheffe").launch()
 
