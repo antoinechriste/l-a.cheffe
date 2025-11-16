@@ -7,6 +7,7 @@ from langchain_community.vectorstores import Chroma
 from langchain_community.llms import HuggingFaceHub
 from pathlib import Path
 import gradio as gr
+import shutil
 
 # Task 1 - Load URLs from url_list.txt
 path_url = "C:\\Users\\chris\\OneDrive\\Documenti\\AI-projects\\cookbot\\documents\\"
@@ -47,8 +48,7 @@ text_splitter = RecursiveCharacterTextSplitter(
 )
 
 # Split all loaded documents (use page_content when available)
-texts_to_split = [d.page_content if getattr(d, 'page_content', None) is not None else str(d) for d in docs]
-split_text = text_splitter.create_documents(texts_to_split)
+split_text = text_splitter.split_documents(docs)
 
 
 # Task 3 - Embed documents using local HuggingFace model
@@ -61,11 +61,10 @@ embeddings = HuggingFaceEmbeddings(
     model_kwargs={'device': 'cpu'}   # Use CPU, change to 'cuda' if you have GPU
 )
 
-texts = [doc.page_content for doc in split_text]
-doc_result = embeddings.embed_documents(texts)
-
 # Task 4 - Create and configure vector databases to store embeddings
 # Create a Chroma vector store from the document chunks
+shutil.rmtree("./chroma_db", ignore_errors=True)
+
 vectordb = Chroma.from_documents(
     documents=split_text,  # Use split_text (Document objects) instead of texts (strings)
     embedding=embeddings,
@@ -82,11 +81,13 @@ for i, doc in enumerate(results, start=1):
     print(f"\nResult {i}:")
     print(doc.page_content)
     print("Metadata:", doc.metadata)
+    print(f"Source: {doc.metadata.get('source')}")
+    print(f"Text: {doc.page_content[:100]}...")
 
 # Test it with Gradio interface
 def query_chroma(user_query):
     results = vectordb.similarity_search(user_query, k=3)
-    return "\n\n".join([doc.page_content for doc in results])
+    return "\n".join([f"Source: {doc.metadata.get('source', 'Inconnue')}" for doc in results])
 
 gr.Interface(fn=query_chroma, inputs="text", outputs="text", title="L-A.cheffe").launch()
 
