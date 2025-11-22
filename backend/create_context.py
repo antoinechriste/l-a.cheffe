@@ -5,9 +5,11 @@ from langchain_text_splitters import Language, RecursiveCharacterTextSplitter
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
 from langchain_community.llms import HuggingFaceHub
+from transformers import AutoTokenizer, AutoModelForCausalLM
+from transformers import TextIteratorStreamer
 from pathlib import Path
+import threading
 import gradio as gr
-import shutil
 import uuid
 
 # Task 1 - Load URLs from url_list.txt
@@ -51,7 +53,6 @@ text_splitter = RecursiveCharacterTextSplitter(
 # Split all loaded documents (use page_content when available)
 split_text = text_splitter.split_documents(docs)
 
-
 # Task 3 - Embed documents using local HuggingFace model
 # Download the model locally if not already done
 #huggingface-cli download sentence-transformers/all-MiniLM-L6-v2 --local-dir ./models/all-MiniLM-L6-v2
@@ -73,29 +74,36 @@ vectordb = Chroma.from_documents(
 
 print(f"Created vector store with {vectordb._collection.count()} documents")
 
-# Task 5 - Task 5: Develop a retriever to fetch document segments based on queries (10 points)
-query = "Quelle est la meilleure recette de smashed burger?"
-results = vectordb.similarity_search(query, k=1)
+# Install TinyLLaMA model for local inference
+model_name = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+tokenizer = AutoTokenizer.from_pretrained(model_name)
+model = AutoModelForCausalLM.from_pretrained(model_name)
 
-for i, doc in enumerate(results, start=1):
-    print(f"\nResult {i}:")
-    print(doc.page_content)
-    print("Metadata:", doc.metadata)
-    print(f"Source: {doc.metadata.get('source')}")
-    print(f"Text: {doc.page_content[:100]}...")
+# Task 5 - Task 5: Develop a retriever to fetch document segments based on queries (10 points)
+def retrieve_context(query, top_k=3):
+    results = vectordb.similarity_search(query, k=top_k)
+    context = "\n".join([doc.page_content for doc in results])
+    return context
+
+def generate_answer_stream(query):
+    context = retrieve_context(query)
+    prompt = f"Answer the question using the context below:\n\nContext:\n{context}\n\nQuestion: {query}\nAnswer:"
+    inputs = tokenizer(prompt, return_tensors="pt")
+    streamer = TextIteratorStreamer(tokenizer, skip_special_tokens=True)
+    generation_kwargs = dict(inputs, max_new_tokens=300, streamer=streamer)
+    thread = threading.Thread(target=model.generate, kwargs=generation_kwargs)
+    thread.start()
+    for new_text in streamer:
+        yield new_text
+
 
 # Test it with Gradio interface
-def query_chroma(user_query):
-    results = vectordb.similarity_search(user_query, k=1)
-    output = []
-    for doc in results:
-        source = doc.metadata.get('source', 'Inconnue')
-        link = f'{source}</a>'
-        output.append(f"Proposition : {link}")
-    return "<br>".join(output)
+iface = gr.Interface(
+    fn=generate_answer_stream,
+    inputs="text",
+    outputs="text",
+    title="TinyLlama QA with Streaming",
+    live=True  # Enables live updates
+)
 
-gr.Interface(fn=query_chroma,
-             inputs=gr.Textbox(lines=5, placeholder="Tapez votre requête ici..."),
-             outputs="html", 
-             title="L-A.cheffe").launch()
-
+iface.launch()
