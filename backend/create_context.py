@@ -79,23 +79,15 @@ model_name = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 model = AutoModelForCausalLM.from_pretrained(model_name)
 
-# Task 5 - Task 5: Develop a retriever to fetch document segments based on queries (10 points)
-def retrieve_context(query, top_k=3):
-    results = vectordb.similarity_search(query, k=top_k)
-    context = "\n".join([doc.page_content for doc in results])
-    return context
-
-def generate_answer_stream(query):
-    context = retrieve_context(query)
-    prompt = f"Answer the question using the context below:\n\nContext:\n{context}\n\nQuestion: {query}\nAnswer:"
-    inputs = tokenizer(prompt, return_tensors="pt")
-    streamer = TextIteratorStreamer(tokenizer, skip_special_tokens=True)
-    generation_kwargs = dict(inputs, max_new_tokens=300, streamer=streamer)
-    thread = threading.Thread(target=model.generate, kwargs=generation_kwargs)
-    thread.start()
-    for new_text in streamer:
-        yield new_text
-
+query = "J'aimerais une recette de smashed burger"
+results = vectordb.similarity_search(query, k=1)
+selected_url = results[0].metadata.get("source")
+all_text_for_url = [doc.page_content for doc in docs if doc.metadata.get("source") == selected_url]
+context = "\n".join(all_text_for_url)
+prompt = f"Answer the question using the context below:\n\nContext:\n{context}\n\nQuestion: {query}\nAnswer:"
+inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=2048)
+outputs = model.generate(**inputs, max_new_tokens=500)
+print(tokenizer.decode(outputs[0], skip_special_tokens=True))
 
 # Test it with Gradio interface
 iface = gr.Interface(
